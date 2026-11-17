@@ -36,37 +36,31 @@ L("오리진: "+location.href,"muted");L("—".repeat(46));
  *  - enum rawValue 블록: __cstring 0x102525f12 ~ 0x102526962 (ChannelWebBridgeCommand)
  * ──────────────────────────────────────────────────────────────────────── */
 
-// [A] ChannelViewController 브릿지 — 실제 등록되는 핸들러 전체(케이싱 정확, 디컴파일 추출)
+// [A] ChannelViewController 브릿지 — 디컴파일 ground-truth(ChannelWebBridgeCommand enum rawValue 115개, 등록순, 케이싱 정확)
 const ALL=[
  "callSTT","callArsPhone","callShowLoading","callLoadingViewShow","callLoadingViewHide",
- "callWebViewOpen","callWebViewClose","callWebViewLoad","callExternalWebView","callPhotoGallery",
- "callIDCardOcr","callQRScan","callLogin","callUserLogout","callGetSetting","callSetSetting",
- "callKbankGetSetting","callKbankSetSetting","callExternalSetting","callGetPushSettings","callSetPushSettings",
- "callGetColorTheme","callSetColorTheme","callGetLanguage","callSetLanguage","callGetSteps",
- "callCreateUuid","callCreateAutoLoginUuid","callSaveAutoLoginUuid","callExistAutoLoginUuid","callDeleteAutoLoginUuid",
- "callGetClipBoard","callGetClipBoardId","callIsDeviceLock","callIsVoiceOver","callIsCalling",
- "callDeviceHaptic","callKbankHaptic","callStatusBarStyle","callSetBrightness","callCheckScheme",
- "callStartApp","callMobileIDApp","callOpenBrowser","callSendSms","callSendMore","callKbankShare",
- "callShareSns","callGetContact","callContact","callContactMulti","callTransferWidget",
- "callSaveImage","callSaveFile","callNormalSaveFile","callPageFinished","callCacheClear",
- "callShowAppStoreRatingPopup","callShowMiniGame","callShowRewardVideo","callFlowControlState",
- "callKeypad","callCloseKeypad","callFaceAuth","callAppIronAuth","callNativeRestAPI",
- "callScrapingBig","callScrapingMulti","callRequestFdsCollectionServer","callEzl",
- // 인증서(공동/금융인증)
- "callCertList","callCertConfirmArray","callCertDelete","callCertUbikey","callCertUbikeySave","callCertPdfSign",
- "callCommonCertInfo","callCommonCertIssue","callCommonCertImport","callCommonCertExport",
- "callCommonCertUpdate","callCommonCertPasswordChange",
- "callSimpleCertList","callSimpleCertIssue","callSimpleCertCheckPin","callSimpleCertDelete","callSimpleCertPasswordChange",
- // MPKI(모바일 사설인증) / 서명
- "callMPKIBioCheck","callMPKIBioRegComplete","callMPKIIssue","callMPKIIssueSave","callMPKIDiscard",
- "callMPKIgetAllInfo","callMPKIgetBioSignature","callMPKISign","callMPKISignWithAttr",
- // MOTP(일회용비번)
- "callMotpExist","callMotpNumber","callMotpCheckPw","callMotpSavePassword","callMotpDelete",
- "callMotpKeyChange","callMotpKeyChangePassword",
- // OTAC
- "callOtacRegister","callOtacDeregister","callOtacGetRegistrationMessage","callOtacGetVerifyMessage",
- // 결제
- "callNonLoginPay","callZeroPayTranReq","callZeroPayRsltReq","callPayCodeCreate"];
+ "callWebViewOpen","callWebViewClose","callPhotoGallery","callIDCardOcr","callExternalWebView",
+ "callappversion","callphoneinfo","callnativelogin","callLogin","callGetSetting",
+ "callSetSetting","callKbankSetSetting","callKbankGetSetting","callCreateUuid","callMPKIBioCheck",
+ "callMPKIIssue","callGetClipBoardId","callIsDeviceLock","callMPKIIssueSave","callMPKIDiscard",
+ "callIsVoiceOver","callMPKIgetAllInfo","callMPKIBioRegComplete","callGetClipBoard","callStartApp",
+ "callCheckScheme","callSendSms","callDeviceHaptic","callIsCalling","callMPKISignWithAttr",
+ "callSaveImage","callStatusBarStyle","callMPKISign","callCreateAutoLoginUuid","callMPKIgetBioSignature",
+ "callGetContact","callCertList","callKbankHaptic","callSaveAutoLoginUuid","callExternalSetting",
+ "callExistAutoLoginUuid","callShareSns","callSendMore","callKbankShare","callCommonCertInfo",
+ "callDeleteAutoLoginUuid","callUserLogout","callCommonCertUpdate","callMotpSavePassword","callCommonCertIssue",
+ "callShowAppStoreRatingPopup","callCommonCertImport","callCertConfirmArray","callCertDelete","callCommonCertExport",
+ "callContact","callContactMulti","callOpenBrowser","callMotpKeyChangePassword","callMotpNumber",
+ "callMobileIDApp","callMotpKeyChange","callGetPushSettings","callTransferWidget","callPageFinished",
+ "callCommonCertPasswordChange","callSetPushSettings","callMotpDelete","callMotpCheckPw","callMotpExist",
+ "callNormalSaveFile","callSimpleCertList","callSimpleCertIssue","callWebViewLoad","callCacheClear",
+ "callRequestFdsCollectionServer","callSimpleCertCheckPin","callSimpleCertPasswordChange","callSimpleCertDelete","callKeypad",
+ "callFaceAuth","callAppIronAuth","callScrapingMulti","callScrapingBig","callCloseKeypad",
+ "callOtacGetRegistrationMessage","callOtacRegister","callOtacGetVerifyMessage","callOtacDeregister","callCertUbikey",
+ "calllogout","callSaveFile","callQRScan","callCertUbikeySave","callNativeRestAPI",
+ "callCertPdfSign","callEzl","callPayCodeCreate","callZeroPayRsltReq","callZeroPayTranReq",
+ "callNonLoginPay","callSetBrightness","callFlowControlState","callShowMiniGame","callShowRewardVideo",
+ "callGetColorTheme","callSetColorTheme","callGetLanguage","callSetLanguage","callGetSteps"];
 
 // [B] FeatureExternal.ExternalWebView 브릿지(별도 핸들러 세트 — 케이싱/명칭 상이, 0x10219cxx~0x10219dxx)
 const EXTERNAL=[
@@ -121,20 +115,10 @@ function showResp(name,args){
 ["nativeCallback","bridgeCallback","onNativeResult","webkitCallback","kbankCallback","callback",
  "jsCallback","resultCallback","nativeBridgeCallback","onResult","responseHandler","__rt","callBackId",
  "nativeCallBack","webkit_callback","smartbankCallback"].forEach(n=>{try{window[n]=(...a)=>showResp(n,a);}catch(e){}});
-// (b) catch-all: window의 '정의되지 않은 함수' 호출을 프로토타입 Proxy로 전부 가로챔
-//     → 네이티브가 callBackId로 넘긴 '임의 함수명'으로 window.xxx(result) 호출해도 값 포착
-try{
-  const realProto=Object.getPrototypeOf(window)||Object.prototype;
-  Object.setPrototypeOf(window, new Proxy(realProto,{
-    get(t,p,r){
-      if(typeof p!=="string") return Reflect.get(t,p,r);
-      if(p in t) return Reflect.get(t,p,r);                 // 원래 프로토타입 속성은 유지
-      if(/^__proto__$|^constructor$|^then$|^Symbol/.test(p)) return undefined;
-      return (...a)=>showResp(p,a);                          // 미정의 접근 → 콜백으로 간주, 값 표시
-    }
-  }));
-  L("catch-all 설치됨 — 임의 콜백명 응답도 값까지 표시","muted");
-}catch(e){ L("catch-all 설치 실패(고정 콜백명으로만 포착): "+e,"muted"); }
+// (b) catch-all Proxy는 제거 — WKWebView window는 immutable prototype이라 setPrototypeOf 불가(에러의 원인),
+//     그리고 불필요함: 디컴파일로 확정됨 → 네이티브는 '요청의 callBackId로 지정한 함수명'을 호출한다.
+//     각 READ/ACTION이 callBackId=우리가 '직접 정의한 전역함수'(window[cb]) 로 보내므로 그 함수가 값을 받는다.
+L("응답 포착 = callBackId로 지정한 우리 전역함수 호출 방식(디컴파일 확정). catch-all 불필요.","muted");
 
 const mh=(window.webkit&&window.webkit.messageHandlers)||{};
 function send(h,payload){try{if(mh[h]){mh[h].postMessage(payload);return true;}}catch(e){}return false;}

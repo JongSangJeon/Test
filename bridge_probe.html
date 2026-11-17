@@ -150,11 +150,35 @@ function cbFields(cb){return {
   callBackParam1:"P1",callBackParam2:"P2",callBackParam3:"P3",callBackParam4:"P4",callBackParam5:"P5",
   callback:cb,callbackId:cb                         // 혹시 모를 변형 대비(catch-all로도 포착됨)
 };}
+// 디컴파일로 확정한 명령별 입력 키(값이 채워져 돌아오게 하려면 유효 입력 필요)
+//  getSetting계열: settingkey(소문자) / Kbank계열: settingKey(대문자). 값(어떤 세팅인지)은 앱정의 — 후보 몇개 시도.
+// setting 저장소 = DataFoundation.UserDefaultsRepository (범용 UserDefaults KV, SettingKey enum 없음 → 임의 키 허용)
+// 디컴파일로 확인된 실제 앱 키 후보(값이 돌아오면 저장돼 있던 것):
+const SETTING_KEYS=["previousPinIssuedYesNo","previousBioIssuedYesNo","userAgent","isUserAgentUpdate",
+  "custId","custid","userId","deviceId","autoLogin","autoLoginUuid","pushYn","bioLoginYn","language"];
+const INPUTS={
+  // getSetting계열은 아래 SETTING_KEYS를 순회(각 키로 1회씩) — 아무 키나 허용되므로 저장된 키면 값 반환
+  callGetClipBoard:{}, callGetClipBoardId:{},   // 입력 없음(클립보드 → callBackParam1 슬롯)
+};
+// getSetting/KbankGetSetting은 키별로 개별 호출
+function settingReads(){
+  ["callKbankGetSetting","callGetSetting"].forEach(m=>{
+    if(!mh[m])return;
+    SETTING_KEYS.forEach(k=>{
+      const cb="rtset_"+m+"_"+k.replace(/[^A-Za-z0-9]/g,"");
+      try{window[cb]=(...a)=>showResp(m+":"+k,a);}catch(e){}
+      const keyField = m.indexOf("Kbank")>=0 ? {settingKey:k} : {settingkey:k,key:k};
+      send(m, JSON.stringify(Object.assign({}, keyField, cbFields(cb))));
+    });
+  });
+  L(`[SETTING] ${SETTING_KEYS.length}개 키 × getSetting계열 전송 → 저장된 키는 [응답]에 값 표시`,"muted");
+}
 READ.forEach(m=>{
   let hit=false;
   const cb="rtcb_"+m.replace(/[^A-Za-z0-9]/g,"");
   try{window[cb]=(...a)=>showResp(cb,a);}catch(e){}  // callBackId로 지정한 전역 함수 실제 정의
-  const body=Object.assign({param:"custid",key:"custid",data:{key:"custid"}},cbFields(cb));
+  // 입력 스키마(있으면) 병합 + callBackParam 슬롯은 빈값으로 → 네이티브가 결과를 채우면 그 자리에 실제 값이 보임
+  const body=Object.assign({param:"custid",key:"custid",data:{key:"custid"}}, INPUTS[m]||{}, cbFields(cb));
   // (a) 메서드명 자체가 핸들러명인 경우 — body는 JSON 문자열
   hit|=send(m,JSON.stringify(body));
   hit|=send(m,"custid");
@@ -162,6 +186,7 @@ READ.forEach(m=>{
   DISPATCHERS.forEach(d=>{hit|=send(d,JSON.stringify(Object.assign({method:m,data:{key:"custid"}},cbFields(cb))));});
   L(`  ${m}: ${hit?"전송됨 → 응답 오면 [응답]에 값+P1~P5 마커 표시":"핸들러 없음"}`,hit?"ok":"muted");
 });
+settingReads();  // getSetting계열: 실측 키 후보를 키별로 호출해 저장값 조회
 
 // 2) 노출된 핸들러 열거
 L("—".repeat(46));

@@ -199,8 +199,25 @@ ACTION.forEach(m=>{
     sent?"muted":(names.length?"bad":"muted"));
 });
 
+// ── 전체 핸들러 blanket probe ── ChannelView(115) + External(37) + 소문자 변형 전부 합쳐 등록 여부·응답 확인
+// 어느 웹뷰(ChannelViewController / ExternalWebView / 기타)로 열리든, 그 컨텍스트에 등록된 핸들러는 전부 호출됨.
+const HANDLERS=[...new Set([...ALL,...EXTERNAL])];
+L("—".repeat(46));
+const detected=HANDLERS.filter(h=>mh[h]);
+L(`[전체] 후보 ${HANDLERS.length}개 중 이 웹뷰에 실제 등록된 핸들러 ${detected.length}개:`,detected.length?"bad":"muted");
+L("  "+(detected.join(", ")||"(없음)"),detected.length?"bad":"muted");
+L(`[전체] blanket probe 전송(등록된 ${detected.length}개 호출 → 응답 값은 [응답]에):`,"muted");
+detected.forEach(h=>{
+  const cb="rtall_"+h.replace(/[^A-Za-z0-9]/g,"");
+  try{window[cb]=(...a)=>showResp(h,a);}catch(e){}
+  const lk=h.toLowerCase();
+  const extra = lk.indexOf("getsetting")>=0 ? (lk.indexOf("kbank")>=0?{settingKey:"previousBioIssuedYesNo"}:{settingkey:"previousBioIssuedYesNo",key:"previousBioIssuedYesNo"}) : {};
+  send(h, JSON.stringify(Object.assign({__probe:"blanket"}, extra, cbFields(cb))));
+});
+
 L("—".repeat(46));
 L("판정: [응답]에 custid/uuid/token/signature 뜨면 = 오리진검증 없음(#1 취약). 서버로그 히트 = 스킴 하이재킹 성립.","muted");
+L("핸들러 '없음'이 많으면 = 그 웹뷰(외부URL용 ExternalWebView 등)가 축소 세트만 등록한다는 뜻 → [전체] 줄의 '실제 등록된 핸들러'가 그 진입점의 진짜 공격면.","muted");
 L(`커맨드 모델: message.name=핸들러명, message.body=JSON문자열 → Reactor → UseCase. 등록 115개(FUN_10032753c).`,"muted");
 </script>
 </body>
